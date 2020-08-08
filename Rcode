@@ -1,0 +1,98 @@
+library(quantmod)
+library(lubridate)
+library(PerformanceAnalytics)
+require(stats)
+
+## in sample
+tics <- c("AAPL","AMZN","JNJ",
+"BAC","ORCL","XOM","GOOG","WMT","PFE","JPM","T","CVX")
+P.list <- lapply(tics, function(v) try(get(getSymbols(v,from = "2016-01-01",to = "2017-12-31")),silent = T))
+P.adj <- lapply(P.list, function(x) x[,6] )
+P12 <- merge(P.adj[[1]],P.adj[[2]],P.adj[[3]],P.adj[[4]],P.adj[[5]],
+P.adj[[6]],P.adj[[7]],P.adj[[8]],P.adj[[9]],P.adj[[10]],P.adj[[11]],P.adj[[12]])
+P_in <- Reduce(merge,P.adj)
+
+###out sample
+tics <- c("AAPL","AMZN","JNJ",
+"BAC","ORCL","XOM","GOOG","WMT","PFE","JPM","T","CVX")
+P.list <- lapply(tics, function(v) try(get(getSymbols(v,from = "2018-01-01",to = "2019-12-31")),silent = T))
+P.adj <- lapply(P.list, function(x) x[,6] )
+P12 <- merge(P.adj[[1]],P.adj[[2]],P.adj[[3]],P.adj[[4]],P.adj[[5]],
+P.adj[[6]],P.adj[[7]],P.adj[[8]],P.adj[[9]],P.adj[[10]],P.adj[[11]],P.adj[[12]])
+P_out <- Reduce(merge,P.adj)
+
+## rturn and covariance of R_rin
+R_in <- log(P_in/lag(P_in))
+R_in <- na.omit(R_in)
+mean_in<-252*apply(R_in,2,mean) ## mean
+cov_in<-cov(R_in)*252 ## on annual basis
+
+### return and covariance of r_out
+R_out <- log(P_out/lag(P_out))
+R_out <- na.omit(R_out)
+mean_out<-252*apply(R_out,2,mean) ## mean
+cov_out<-cov(R_out)*252
+Unit_vector<-rep(1,12)
+
+### minimum Global variance for in
+cov_inv_in<-solve(cov_in)
+top.mat_in<-cov_inv_in%*%Unit_vector
+bot.val<-as.numeric((t(Unit_vector)%*%cov_inv_in%*%Unit_vector))
+weight.mat_in = top.mat_in/bot.val
+mean_p_in<-crossprod(weight.mat_in,mean_in)
+sigma_p_in<-sqrt(as.numeric((t(weight.mat_in)%*%cov_in%*%weight.mat_in)))
+sharpe_p_in<-mean_p_in/sigma_p_in
+
+##frontier curve
+mean_p<-NULL
+sigma_p<-NULL
+for(i in 1:2000){x<-sample(1:12,12,replace=T)
+x<-x/sum(x)
+mean_p[i]<-crossprod(x,mean_in)
+sigma_p[i]<-sqrt(as.numeric((t(x)%*%cov_in%*%x)))
+}
+sharp_in<-mean_p/sigma_p
+mean_p[which.max(sharp_in)]/sigma_p[which.max(sharp_in)]
+mean_p<-as.matrix(mean_p)
+sigma_p<-as.matrix(sigma_p)
+plot(sigma_p,mean_p,xlab="volatility",ylab="Return",main="MVEF for 2016-2017")
+points(mean_p_in,sigma_p_in, col = "yellow",cex=1.5,pch=23)
+
+
+### minimum Global variance for out
+cov_inv_out<-solve(cov_out)
+top.mat_out<-cov_inv_out%*%Unit_vector
+bot.val<-as.numeric((t(Unit_vector)%*%cov_inv_out%*%Unit_vector))
+weight.mat_out = top.mat_out/bot.val
+mean_p_out<-crossprod(weight.mat_out,mean_out)
+sigma_p_out<-sqrt(as.numeric((t(weight.mat_out)%*%cov_out%*%weight.mat_out)))
+sharpe_p_out<-mean_p_out/sigma_p_out
+
+###frontier curve for out
+##frontier curve
+mean_p<-NULL
+sigma_p<-NULL
+for(i in 1:20000){x<-sample(1:12,12,replace=T)
+x<-x/sum(x)
+mean_p[i]<-crossprod(x,mean_out)
+sigma_p[i]<-sqrt(as.numeric((t(x)%*%cov_out%*%x)))
+}
+sharp_out<-mean_p/sigma_p
+mean_p[which.max(sharp_out)]/sigma_p[which.max(sharp_out)]
+mean_p<-as.matrix(mean_p)
+sigma_p<-as.matrix(sigma_p)
+plot(sigma_p,mean_p,xlab="volatility",ylab="Return",main="MVEF for 2018-2019")
+
+library(NMOF)
+wmax<-1
+wmin<-0.0
+p1<-mvFrontier(mean_in,cov_in,wmin=wmin,wmax=wmax,n=20)
+p2<-mvFrontier(mean_out,cov_out,wmin=wmin,wmax=wmax,n=20)
+plot(p1$volatility, p1$return, pch = 20, cex = 1, type = "l",
+xlab = "volatility",
+ylab = "return",xlim=c(0.08,0.30),ylim=c(0.05, 0.32),main="MVEF for 2016-2017& 2018-2019")
+lines(p2$volatility,p2$returns, col="red",lty=2)
+legend("topleft",
+c("in_port","out_port"),
+fill=c("black","red")
+)
